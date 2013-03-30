@@ -44,10 +44,20 @@ namespace Plugin_UTATalk {
       get { return setting.VoiceBankDefinitionPath; }
       set { setting.VoiceBankDefinitionPath = value; }
     }
+
+    [Category("基本設定")]
+    [DisplayName("resampler パス")]
+    [Description("resampler へのパスを指定してください。")]
+    [Editor(typeof(System.Windows.Forms.Design.FileNameEditor), typeof(System.Drawing.Design.UITypeEditor))]
+    public string ResamplerPath {
+      get { return setting.ResamplerPath; }
+      set { setting.ResamplerPath = value; }
+    }
   }
 
   public class UTATalkSetting : SettingsBase {
     public string VoiceBankDefinitionPath = "";
+    public string ResamplerPath           = "";
 
     internal Plugin_UTATalk Plugin;
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -53,18 +54,34 @@ namespace Plugin_UTATalk {
       get { return "2013/03/30"; }
     }
 
+    private List<string> resultFiles;
+
     public void Begin() {
       loadSetting();
+      if (!File.Exists(setting.ResamplerPath)) {
+        talkByBouyomiChan("リサンプラーが読み込めませんでした。設定画面から設定の上、プラグインを一度無効にして有効にし直してください。");
+        return;
+      }
       if(File.Exists(setting.VoiceBankDefinitionPath)){
         loadVoiceBankDefinition(setting.VoiceBankDefinitionPath);
 
         Pub.FormMain.BC.TalkTaskStarted += (sender, e) => {
+          resultFiles = new List<string>();
+
           string talkingScript = convertKatakanaToHiragana(e.ConvertTalk);
           TextElementEnumerator phonemeEnumerator = StringInfo.GetTextElementEnumerator(talkingScript);
+          int count = 0;
           while (phonemeEnumerator.MoveNext()) {
             if (voiceBank.ContainsKey(phonemeEnumerator.Current.ToString())) {
-              playPhoneme(voiceBank[phonemeEnumerator.Current.ToString()]);
+              count += 1;
+              string filename = String.Format(@"{0}.wav", count);
+              resultFiles.Add(filename);
+              generatePhone(voiceBank[phonemeEnumerator.Current.ToString()], filename);
             }
+          }
+
+          foreach (string filename in resultFiles) {
+            playSound(filename);
           }
           e.Cancel = true;
         };
@@ -130,9 +147,27 @@ namespace Plugin_UTATalk {
       settingFormData = new UTATalkSettingFormData(setting);
     }
 
-    private void playPhoneme(Phoneme phoneme) {
+    private void generatePhone(Phoneme phoneme, string saveAs) {
       if (File.Exists(phoneme.path)) {
-        playSound(phoneme.path);
+        string command             = setting.ResamplerPath;
+        ProcessStartInfo startInfo = new ProcessStartInfo();
+
+        startInfo.FileName               = command;
+        startInfo.Arguments              = String.Format("{0} {1} 100 100 B50 {2} {3} {4} {5} {6} {7}",
+          "\""+phoneme.path+"\"",
+          saveAs,
+          phoneme.leftBlank,
+          100,
+          phoneme.consonant,
+          phoneme.rightBlank,
+          100,
+          100);
+
+        startInfo.CreateNoWindow         = true;
+        startInfo.UseShellExecute        = false;
+        startInfo.RedirectStandardOutput = true;
+        Process process = Process.Start(startInfo);
+        string  output  = process.StandardOutput.ReadToEnd();
       }
     }
 
