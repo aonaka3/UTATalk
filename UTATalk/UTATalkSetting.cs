@@ -53,11 +53,21 @@ namespace Plugin_UTATalk {
       get { return setting.ResamplerPath; }
       set { setting.ResamplerPath = value; }
     }
+
+        [Category("基本設定")]
+    [DisplayName("wavetool パス")]
+    [Description("wavtool.exe へのパスを指定してください。")]
+    [Editor(typeof(System.Windows.Forms.Design.FileNameEditor), typeof(System.Drawing.Design.UITypeEditor))]
+    public string WaveToolPath {
+      get { return setting.WaveToolPath; }
+      set { setting.WaveToolPath = value; }
+    }
   }
 
   public class UTATalkSetting : SettingsBase {
     public string VoiceBankDefinitionPath = "";
     public string ResamplerPath           = "";
+    public string WaveToolPath            = "";
 
     internal Plugin_UTATalk Plugin;
 

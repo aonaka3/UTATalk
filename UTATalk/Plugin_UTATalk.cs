@@ -58,6 +58,10 @@ namespace Plugin_UTATalk {
 
     public void Begin() {
       loadSetting();
+      if (!File.Exists(setting.WaveToolPath)) {
+        talkByBouyomiChan("ウェーブツールが読み込めませんでした。設定画面から設定の上、プラグインを一度無効にして有効にし直してください。");
+        return;
+      }
       if (!File.Exists(setting.ResamplerPath)) {
         talkByBouyomiChan("リサンプラーが読み込めませんでした。設定画面から設定の上、プラグインを一度無効にして有効にし直してください。");
         return;
@@ -65,28 +69,54 @@ namespace Plugin_UTATalk {
       if(File.Exists(setting.VoiceBankDefinitionPath)){
         loadVoiceBankDefinition(setting.VoiceBankDefinitionPath);
 
-        Pub.FormMain.BC.TalkTaskStarted += (sender, e) => {
-          resultFiles = new List<string>();
-
-          string talkingScript = convertKatakanaToHiragana(e.ConvertTalk);
-          TextElementEnumerator phonemeEnumerator = StringInfo.GetTextElementEnumerator(talkingScript);
-          int count = 0;
-          while (phonemeEnumerator.MoveNext()) {
-            if (voiceBank.ContainsKey(phonemeEnumerator.Current.ToString())) {
-              count += 1;
-              string filename = String.Format(@"{0}.wav", count);
-              resultFiles.Add(filename);
-              generatePhone(voiceBank[phonemeEnumerator.Current.ToString()], filename);
-            }
-          }
-
-          foreach (string filename in resultFiles) {
-            playSound(filename);
-          }
-          e.Cancel = true;
-        };
+        Pub.FormMain.BC.TalkTaskStarted += BC_TalkTaskStarted;
       }
       else talkByBouyomiChan("うたうの音源ファイルが読み込めませんでした。設定画面から設定の上、プラグインを一度無効にして有効にし直してください。");
+    }
+
+    private void BC_TalkTaskStarted(object sender, BouyomiChan.TalkTaskStartedEventArgs e) {
+      resultFiles = new List<string>();
+
+      string talkingScript = convertKatakanaToHiragana(e.ConvertTalk);
+      TextElementEnumerator phonemeEnumerator = StringInfo.GetTextElementEnumerator(talkingScript);
+      int count = 0;
+      while (phonemeEnumerator.MoveNext()) {
+        if (voiceBank.ContainsKey(phonemeEnumerator.Current.ToString())) {
+          count += 1;
+          string filename = String.Format(@"{0}.wav", count);
+          resultFiles.Add(filename);
+          generatePhone(voiceBank[phonemeEnumerator.Current.ToString()], filename);
+        }
+      }
+      if(File.Exists("result.wav"))     File.Delete("result.wav");
+      if(File.Exists("result.wav.whd")) File.Delete("result.wav.whd");
+      if(File.Exists("result.wav.dat")) File.Delete("result.wav.dat");
+      foreach (string filename in resultFiles) {
+        accumulateWaves(filename);
+      }
+      finalizeWaveFile();
+      playSound("result.wav");
+      e.Cancel = true;
+    }
+
+    private void accumulateWaves(string filename) {
+      ProcessStartInfo startInfo = new ProcessStartInfo();
+      startInfo.FileName         = setting.WaveToolPath;
+      startInfo.Arguments        = String.Format("result.wav {0} 0 200 0 10 10 0 100 100 0 10", filename);
+      startInfo.CreateNoWindow   = true;
+      startInfo.UseShellExecute  = false;
+      Process process = Process.Start(startInfo);
+      process.WaitForExit();
+    }
+
+    private void finalizeWaveFile() {
+      ProcessStartInfo startInfo = new ProcessStartInfo();
+      startInfo.FileName         = "cmd.exe";
+      startInfo.Arguments        = " /c copy /Y result.wav.whd /B + result.wav.dat /B result.wav";
+      startInfo.CreateNoWindow         = true;
+      startInfo.UseShellExecute        = false;
+      Process process = Process.Start(startInfo);
+      process.WaitForExit();
     }
 
     private void loadVoiceBankDefinition(string voiceBankPath) {
@@ -133,8 +163,7 @@ namespace Plugin_UTATalk {
 
     public void End() {
       setting.Save(settingFilePath);
-
-      // TODO: 後片付け Pub.FormMain.BC.TalkTaskStarted
+      Pub.FormMain.BC.TalkTaskStarted -= BC_TalkTaskStarted;
     }
 
     private string convertKatakanaToHiragana(string stringContainingKatakana) {
@@ -148,27 +177,27 @@ namespace Plugin_UTATalk {
     }
 
     private void generatePhone(Phoneme phoneme, string saveAs) {
-      if (File.Exists(phoneme.path)) {
-        string command             = setting.ResamplerPath;
-        ProcessStartInfo startInfo = new ProcessStartInfo();
+      if (!File.Exists(phoneme.path)) return;
+      string command             = setting.ResamplerPath;
+      ProcessStartInfo startInfo = new ProcessStartInfo();
 
-        startInfo.FileName               = command;
-        startInfo.Arguments              = String.Format("{0} {1} 100 100 B50 {2} {3} {4} {5} {6} {7}",
-          "\""+phoneme.path+"\"",
-          saveAs,
-          phoneme.leftBlank,
-          100,
-          phoneme.consonant,
-          phoneme.rightBlank,
-          100,
-          100);
+      startInfo.FileName               = command;
+      startInfo.Arguments              = String.Format("{0} {1} 100 100 B50 {2} {3} {4} {5} {6} {7}",
+        "\""+phoneme.path+"\"",
+        saveAs,
+        phoneme.leftBlank,
+        200,
+        phoneme.consonant,
+        phoneme.rightBlank,
+        100,
+        100);
 
-        startInfo.CreateNoWindow         = true;
-        startInfo.UseShellExecute        = false;
-        startInfo.RedirectStandardOutput = true;
-        Process process = Process.Start(startInfo);
-        string  output  = process.StandardOutput.ReadToEnd();
-      }
+      startInfo.CreateNoWindow         = true;
+      startInfo.UseShellExecute        = false;
+      startInfo.RedirectStandardOutput = true;
+      Process process = Process.Start(startInfo);
+      string  output  = process.StandardOutput.ReadToEnd();
+      process.WaitForExit();
     }
 
     private void playSound(string filePath) {
