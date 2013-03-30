@@ -38,16 +38,16 @@ namespace Plugin_UTATalk {
 
     [Category("基本設定")]
     [DisplayName("UTAU音源ライブラリパス")]
-    [Description("oto.iniの含まれるフォルダへのパスを指定してください。")]
-    [Editor(typeof(System.Windows.Forms.Design.FolderNameEditor), typeof(System.Drawing.Design.UITypeEditor))]
-    public string UTAULibraryFolder {
-      get { return setting.UTAULibraryFolder; }
-      set { setting.UTAULibraryFolder = value; }
+    [Description("oto.iniへのパスを指定してください。")]
+    [Editor(typeof(System.Windows.Forms.Design.FileNameEditor), typeof(System.Drawing.Design.UITypeEditor))]
+    public string VoiceBankDefinitionPath {
+      get { return setting.VoiceBankDefinitionPath; }
+      set { setting.VoiceBankDefinitionPath = value; }
     }
   }
 
   public class UTATalkSetting : SettingsBase {
-    public string UTAULibraryFolder = "";
+    public string VoiceBankDefinitionPath = "";
 
     internal Plugin_UTATalk Plugin;
 

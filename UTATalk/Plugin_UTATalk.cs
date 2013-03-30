@@ -1,6 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using FNF.BouyomiChanApp;
 using FNF.Utility;
 using FNF.XmlSerializerSetting;
@@ -13,6 +16,27 @@ namespace Plugin_UTATalk {
     private UTATalkSettingFormData settingFormData;
     private UTATalkSetting         setting;
 
+    private readonly Regex voiceBankLineRegex = new Regex(
+      @"\s*(?<filename>[^=]+)\s*" + @"=" +
+      @"\s*(?<lyrics>[^=,]*)\s*," +
+      @"\s*(?<leftBlank>[0-9.-]+)\s*," +
+      @"\s*(?<consonant>[0-9.-]+)\s*," +
+      @"\s*(?<rightBlank>[0-9.-]+)\s*," +
+      @"\s*(?<preUtterance>[0-9.-]+)\s*," +
+      @"\s*(?<overlap>[0-9.-]+)\s*");
+
+    private Dictionary<string, Phoneme> voiceBank;
+
+    public class Phoneme {
+      public string path         { get; set; }
+      public string lyrics       { get; set; }
+      public double leftBlank    { get; set; }
+      public double consonant    { get; set; }
+      public double rightBlank   { get; set; }
+      public double preUtterance { get; set; }
+      public double overlap      { get; set; }
+    }
+
     public string Caption {
       get { return "UTAU音源を使用して読み上げを行います。"; }
     }
@@ -22,7 +46,7 @@ namespace Plugin_UTATalk {
     }
 
     public ISettingFormData SettingFormData {
-      get{return settingFormData;}
+      get { return settingFormData; }
     }
 
     public string Version {
@@ -31,31 +55,69 @@ namespace Plugin_UTATalk {
 
     public void Begin() {
       loadSetting();
-      Pub.FormMain.BC.TalkTaskStarted += (sender, e) => {
-        string talkingScript = convertKatakanaToHiragana(e.ConvertTalk);
-        TextElementEnumerator phonemeEnumerator = StringInfo.GetTextElementEnumerator(talkingScript);
-        while (phonemeEnumerator.MoveNext()) playPhoneme(phonemeEnumerator.Current);
-        e.Cancel = true;
-      };
+      if(File.Exists(setting.VoiceBankDefinitionPath)){
+        loadVoiceBankDefinition(setting.VoiceBankDefinitionPath);
+
+        Pub.FormMain.BC.TalkTaskStarted += (sender, e) => {
+          string talkingScript = convertKatakanaToHiragana(e.ConvertTalk);
+          TextElementEnumerator phonemeEnumerator = StringInfo.GetTextElementEnumerator(talkingScript);
+          while (phonemeEnumerator.MoveNext()) {
+            if (voiceBank.ContainsKey(phonemeEnumerator.Current.ToString())) {
+              playPhoneme(voiceBank[phonemeEnumerator.Current.ToString()]);
+            }
+          }
+          e.Cancel = true;
+        };
+      }
+      else talkByBouyomiChan("うたうの音源ファイルが読み込めませんでした。設定画面から設定の上、プラグインを一度無効にして有効にし直してください。");
+    }
+
+    private void loadVoiceBankDefinition(string voiceBankPath) {
+      voiceBank = new Dictionary<string, Phoneme>();
+      using (StreamReader sr = new StreamReader(voiceBankPath, Encoding.GetEncoding("shift_jis"))) {
+        String line;
+        while ((line = sr.ReadLine()) != null) {
+          var match = voiceBankLineRegex.Match(line);
+          if (match.Success) {
+            string filename = match.Groups["filename"].Value;
+            string filepath = Path.Combine(Path.GetDirectoryName(voiceBankPath), filename);
+            string lyrics   = match.Groups["lyrics"].Value;
+            if(lyrics == "") lyrics = Path.GetFileNameWithoutExtension(filename);
+
+            double? leftBlank    = parseDoubleValue(match.Groups["leftBlank"].Value);
+            double? consonant    = parseDoubleValue(match.Groups["consonant"].Value);
+            double? rightBlank   = parseDoubleValue(match.Groups["rightBlank"].Value);
+            double? preUtterance = parseDoubleValue(match.Groups["preUtterance"].Value);
+            double? overlap      = parseDoubleValue(match.Groups["overlap"].Value);
+
+            if(leftBlank.HasValue    && consonant.HasValue && rightBlank.HasValue
+            && preUtterance.HasValue && overlap.HasValue){
+              if(voiceBank.ContainsKey(lyrics)) continue;
+              voiceBank.Add(lyrics, new Phoneme() {
+                path         = filepath,
+                lyrics       = lyrics,
+                leftBlank    = leftBlank.Value,
+                consonant    = consonant.Value,
+                rightBlank   = rightBlank.Value,
+                preUtterance = preUtterance.Value,
+                overlap      = overlap.Value
+              });
+            }
+          }
+        }
+      }
+    }
+
+    private double? parseDoubleValue(string stringToParse) {
+      double result;
+      if (double.TryParse(stringToParse, out result)) return result;
+      else return null;
     }
 
     public void End() {
       setting.Save(settingFilePath);
-    }
 
-    private string buildAudioFilePath(object phoneme) {
-      StringBuilder filenameBuilder = new StringBuilder();
-      filenameBuilder.Append(phoneme);
-      filenameBuilder.Append(".wav");
-      return Path.Combine(setting.UTAULibraryFolder, filenameBuilder.ToString());
-    }
-
-    private string buildAudioFilePathWithUnderscorePrefix(object phoneme) {
-      StringBuilder filenameBuilder = new StringBuilder();
-      filenameBuilder.Append("_");
-      filenameBuilder.Append(phoneme);
-      filenameBuilder.Append(".wav");
-      return Path.Combine(setting.UTAULibraryFolder, filenameBuilder.ToString());
+      // TODO: 後片付け Pub.FormMain.BC.TalkTaskStarted
     }
 
     private string convertKatakanaToHiragana(string stringContainingKatakana) {
@@ -68,14 +130,9 @@ namespace Plugin_UTATalk {
       settingFormData = new UTATalkSettingFormData(setting);
     }
 
-    private void playPhoneme(object phoneme) {
-      string filePath               = buildAudioFilePath(phoneme);
-      string filePathWithUnderscore = buildAudioFilePathWithUnderscorePrefix(phoneme);
-      if (File.Exists(filePath)) {
-        playSound(filePath);
-      }
-      else if(File.Exists(filePathWithUnderscore)){
-        playSound(filePathWithUnderscore);
+    private void playPhoneme(Phoneme phoneme) {
+      if (File.Exists(phoneme.path)) {
+        playSound(phoneme.path);
       }
     }
 
