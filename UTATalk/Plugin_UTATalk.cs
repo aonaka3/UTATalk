@@ -30,13 +30,13 @@ namespace Plugin_UTATalk {
     }
 
     public void Begin() {
+      loadSetting();
       Pub.FormMain.BC.TalkTaskStarted += (sender, e) => {
         string talkingScript = convertKatakanaToHiragana(e.ConvertTalk);
         TextElementEnumerator phonemeEnumerator = StringInfo.GetTextElementEnumerator(talkingScript);
         while (phonemeEnumerator.MoveNext()) playPhoneme(phonemeEnumerator.Current);
         e.Cancel = true;
       };
-      loadSetting();
     }
 
     public void End() {
@@ -44,11 +44,18 @@ namespace Plugin_UTATalk {
     }
 
     private string buildAudioFilePath(object phoneme) {
-      StringBuilder audioFilePathBuilder = new StringBuilder();
-      audioFilePathBuilder.Append("C:\\miko\\");
-      audioFilePathBuilder.Append(phoneme);
-      audioFilePathBuilder.Append(".wav");
-      return audioFilePathBuilder.ToString();
+      StringBuilder filenameBuilder = new StringBuilder();
+      filenameBuilder.Append(phoneme);
+      filenameBuilder.Append(".wav");
+      return Path.Combine(setting.UTAULibraryFolder, filenameBuilder.ToString());
+    }
+
+    private string buildAudioFilePathWithUnderscorePrefix(object phoneme) {
+      StringBuilder filenameBuilder = new StringBuilder();
+      filenameBuilder.Append("_");
+      filenameBuilder.Append(phoneme);
+      filenameBuilder.Append(".wav");
+      return Path.Combine(setting.UTAULibraryFolder, filenameBuilder.ToString());
     }
 
     private string convertKatakanaToHiragana(string stringContainingKatakana) {
@@ -62,9 +69,14 @@ namespace Plugin_UTATalk {
     }
 
     private void playPhoneme(object phoneme) {
-      var filePath = buildAudioFilePath(phoneme);
-      if (!File.Exists(filePath)) return;
-      playSound(filePath);
+      string filePath               = buildAudioFilePath(phoneme);
+      string filePathWithUnderscore = buildAudioFilePathWithUnderscorePrefix(phoneme);
+      if (File.Exists(filePath)) {
+        playSound(filePath);
+      }
+      else if(File.Exists(filePathWithUnderscore)){
+        playSound(filePathWithUnderscore);
+      }
     }
 
     private void playSound(string filePath) {
